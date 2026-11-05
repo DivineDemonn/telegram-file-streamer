@@ -1,4 +1,12 @@
 import asyncio
+
+# Create and set event loop before importing pyrogram
+try:
+    loop = asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup,
@@ -41,7 +49,6 @@ async def check_fsub(client: Client, user_id: int):
         except UserNotParticipant:
             unjoined.append(ch)
         except Exception:
-            # If bot hasn't joined or lack permissions, treat as bypass or unjoined
             continue
     return unjoined
 
@@ -65,7 +72,6 @@ async def start_handler(client: Client, message: Message):
         for idx, ch in enumerate(FSUB_CHANNELS, start=1):
             buttons.append([InlineKeyboardButton(f"📢 Join Backup Channel {idx} ➜", url=ch["link"])])
         
-        # Verify button reapplies the file command
         file_arg = text_parts[1] if len(text_parts) > 1 else ""
         buttons.append([InlineKeyboardButton("🔄 Verify & Refresh Access 🔄", url=f"https://t.me/{client.me.username}?start={file_arg}")])
 
@@ -85,7 +91,6 @@ async def start_handler(client: Client, message: Message):
 
         step1_url = f"{FQDN}/step1/{file_hash}"
 
-        # Highly styled download button with dynamic indicators
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("⚡ FAST DOWNLOAD (CHROME) ⚡", url=step1_url)],
             [InlineKeyboardButton("🌐 Open Directly in Chrome Browser 🌐", url=step1_url)]
@@ -100,11 +105,9 @@ async def start_handler(client: Client, message: Message):
             disable_web_page_preview=True
         )
 
-        # Trigger auto-delete in 240 seconds
         asyncio.create_task(auto_delete_task(message.chat.id, sent.id, 240))
         return
 
-    # Regular welcome message
     await message.reply_text(
         "👋 **Welcome to the Ultra-Fast File Stream & Link Bot!**\n\n"
         "Send files directly to receive high-speed download links.\n"
@@ -115,13 +118,11 @@ async def start_handler(client: Client, message: Message):
 async def file_upload_handler(client: Client, message: Message):
     user_id = message.from_user.id
 
-    # Restrict uploads strictly to the bot owner
     if user_id != OWNER_ID:
         return await message.reply_text("⛔ **Unauthorized:** Only the bot owner can upload files to this bot.")
 
     status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
 
-    # Forward or copy to database channel
     media = getattr(message, message.media.value)
     copied_msg = await message.copy(DB_CHANNEL)
 
@@ -151,7 +152,6 @@ async def main():
     await bot.start()
     print("Bot started successfully!")
 
-    # Setup web application
     app = init_web_server(bot)
     runner = web.AppRunner(app)
     await runner.setup()
@@ -159,9 +159,7 @@ async def main():
     await site.start()
     print(f"Web server running on port {PORT} with URL {FQDN}")
 
-    # Keep bot running
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
