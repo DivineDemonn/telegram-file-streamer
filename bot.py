@@ -1,20 +1,20 @@
 import asyncio
 
-# Create and set event loop before importing pyrogram
+# Initialize event loop before Pyrogram import for compatibility
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
+import traceback
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    Message,
-    CallbackQuery
+    Message
 )
-from pyrogram.errors import UserNotParticipant, FloodWait
+from pyrogram.errors import UserNotParticipant, RPCError
 from pyrogram.enums import ChatMemberStatus
 
 from config import (
@@ -38,7 +38,6 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# Helper function to check all 4 channels
 async def check_fsub(client: Client, user_id: int):
     unjoined = []
     for ch in FSUB_CHANNELS:
@@ -52,7 +51,6 @@ async def check_fsub(client: Client, user_id: int):
             continue
     return unjoined
 
-# Background task to delete message after 4 minutes (240 seconds)
 async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 240):
     await asyncio.sleep(delay_seconds)
     try:
@@ -65,7 +63,7 @@ async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
     text_parts = message.text.split()
 
-    # Step 1: Check Force Subscribe for all 4 channels
+    # Verify membership across 4 backup channels
     unjoined = await check_fsub(client, user_id)
     if unjoined:
         buttons = []
@@ -82,7 +80,7 @@ async def start_handler(client: Client, message: Message):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-    # Step 2: Handle deep-link access (start=file_<hash>)
+    # Process file download link
     if len(text_parts) > 1 and text_parts[1].startswith("file_"):
         file_hash = text_parts[1].replace("file_", "")
         file_data = await get_file(file_hash)
@@ -99,8 +97,8 @@ async def start_handler(client: Client, message: Message):
         sent = await message.reply_text(
             f"🎬 **File Ready:** `{file_data['file_name']}`\n\n"
             f"🔗 **Download Link:** [Click Here to Unlock]({step1_url})\n\n"
-            f"⚠️ **Notice:** Open this link inside **Google Chrome** for multi-thread high-speed downloading.\n"
-            f"⏳ **Security Timer:** This button and link will automatically be deleted in **4 minutes**!",
+            f"⚠️ **Notice:** Open this link inside **Google Chrome** for high-speed direct downloading.\n"
+            f"⏳ **Security Timer:** This message will automatically be deleted in **4 minutes**!",
             reply_markup=keyboard,
             disable_web_page_preview=True
         )
@@ -110,7 +108,7 @@ async def start_handler(client: Client, message: Message):
 
     await message.reply_text(
         "👋 **Welcome to the Ultra-Fast File Stream & Link Bot!**\n\n"
-        "Send files directly to receive high-speed download links.\n"
+        "Send files directly to generate high-speed download links.\n"
         "*(Note: File link generation is restricted to the bot owner)*"
     )
 
@@ -121,32 +119,61 @@ async def file_upload_handler(client: Client, message: Message):
     if user_id != OWNER_ID:
         return await message.reply_text("⛔ **Unauthorized:** Only the bot owner can upload files to this bot.")
 
-    status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
+    media = getattr(message, message.media.value, None)
+    if not media:
+        return await message.reply_text("❌ **Unsupported media format.**")
 
-    media = getattr(message, message.media.value)
-    copied_msg = await message.copy(DB_CHANNEL)
-
-    file_name = getattr(media, "file_name", "telegram_file")
     file_size = getattr(media, "file_size", 0)
+
+    # Check 2GB Telegram API limit
+    if file_size > 2000 * 1024 * 1024:
+        size_gb = round(file_size / (1024 * 1024 * 1024), 2)
+        return await message.reply_text(
+            f"⚠️ **File Size Too Large ({size_gb} GB)!**\n\n"
+            f"Telegram strictly limits bots to files under **2.0 GB**.\n"
+            f"Please compress or split this file under 2 GB so the bot can stream it."
+        )
+
+    # Determine filename safely
+    file_name = getattr(media, "file_name", None)
+    if not file_name:
+        ext = ".mp4" if message.video else (".mp3" if message.audio else "")
+        file_name = f"file_{message.id}{ext}"
+
     mime_type = getattr(media, "mime_type", "application/octet-stream")
 
-    file_hash = await save_file(copied_msg.id, file_name, file_size, mime_type)
-    bot_username = client.me.username
+    status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
 
-    deep_link = f"https://t.me/{bot_username}?start=file_{file_hash}"
-    direct_web_link = f"{FQDN}/step1/{file_hash}"
+    try:
+        # Copy file to private storage channel
+        copied_msg = await message.copy(DB_CHANNEL)
+        
+        # Save file record in MongoDB
+        file_hash = await save_file(copied_msg.id, file_name, file_size, mime_type)
+        bot_username = client.me.username
 
-    await status_msg.edit_text(
-        f"✅ **File Stored Permanently!**\n\n"
-        f"📁 **Name:** `{file_name}`\n"
-        f"💾 **Size:** `{round(file_size / (1024*1024), 2)} MB`\n\n"
-        f"🤖 **Bot Start Link:**\n`{deep_link}`\n\n"
-        f"🌐 **Direct Shortener Web Link:**\n`{direct_web_link}`\n\n"
-        f"*(Users will verify 4 channels, pass through 2 countdown pages with Adsterra ads, and download in Chrome at full speed)*",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Test Download Link", url=deep_link)]
-        ])
-    )
+        deep_link = f"https://t.me/{bot_username}?start=file_{file_hash}"
+        direct_web_link = f"{FQDN}/step1/{file_hash}"
+
+        await status_msg.edit_text(
+            f"✅ **File Stored Permanently!**\n\n"
+            f"📁 **Name:** `{file_name}`\n"
+            f"💾 **Size:** `{round(file_size / (1024 * 1024), 2)} MB`\n\n"
+            f"🤖 **Bot Start Link:**\n`{deep_link}`\n\n"
+            f"🌐 **Direct Shortener Web Link:**\n`{direct_web_link}`",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Test Download Link", url=deep_link)]
+            ])
+        )
+    except RPCError as e:
+        await status_msg.edit_text(
+            f"❌ **Telegram Error:** `{e.MESSAGE}`\n\n"
+            f"Make sure the bot is an **Admin** in channel `{DB_CHANNEL}` with **Post Messages** enabled."
+        )
+    except Exception as e:
+        err_msg = traceback.format_exc()
+        print(f"Error in upload handler: {err_msg}")
+        await status_msg.edit_text(f"❌ **Database/Server Error:** `{str(e)}`")
 
 async def main():
     await bot.start()
