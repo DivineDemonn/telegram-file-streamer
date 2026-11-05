@@ -49,6 +49,9 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
+# In-memory cache for live channel titles and working invite links
+FSUB_CACHE = {}
+
 def format_size(size_bytes: int) -> str:
     if not size_bytes:
         return "0 B"
@@ -58,24 +61,65 @@ def format_size(size_bytes: int) -> str:
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
 
-# Strict Force Subscribe Verification
-async def check_fsub(client: Client, user_id: int):
-    unjoined = []
-    for ch in FSUB_CHANNELS:
-        chat_id = ch.get("chat_id")
-        if not chat_id or str(chat_id).startswith("-100111111111"):
-            # Dummy/unset ID detected
+async def refresh_fsub_cache(client: Client):
+    """Auto-fetches channel titles and generates permanent invite links directly from Telegram."""
+    for item in FSUB_CHANNELS:
+        c_id = item.get("chat_id")
+        if not c_id:
             continue
+
+        env_link = item.get("link", "")
         try:
-            member = await client.get_chat_member(chat_id, user_id)
-            if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
-                unjoined.append(ch)
-        except UserNotParticipant:
-            unjoined.append(ch)
+            chat = await client.get_chat(c_id)
+            title = chat.title or f"Backup Channel"
+
+            # Prefer public username if available
+            if chat.username:
+                real_link = f"https://t.me/{chat.username}"
+            elif env_link and "backup_channel" not in env_link:
+                real_link = env_link
+            elif chat.invite_link:
+                real_link = chat.invite_link
+            else:
+                # Generate a new permanent invite link using bot admin rights
+                try:
+                    real_link = await client.export_chat_invite_link(c_id)
+                except Exception:
+                    new_inv = await client.create_chat_invite_link(c_id)
+                    real_link = new_inv.invite_link
+
+            FSUB_CACHE[c_id] = {
+                "chat_id": c_id,
+                "title": title,
+                "link": real_link
+            }
+            print(f"✓ Channel Cached: '{title}' ({c_id}) -> {real_link}")
+
         except Exception as e:
-            print(f"! Error checking channel {chat_id} for user {user_id}: {e}")
-            # If bot cannot check (e.g. not admin), require channel to protect links
-            unjoined.append(ch)
+            print(f"! Warning: Could not resolve channel {c_id}: {e}")
+            if env_link and "backup_channel" not in env_link:
+                FSUB_CACHE[c_id] = {
+                    "chat_id": c_id,
+                    "title": "Backup Channel",
+                    "link": env_link
+                }
+
+async def check_fsub(client: Client, user_id: int):
+    """Checks subscription status against all configured channels."""
+    if not FSUB_CACHE:
+        await refresh_fsub_cache(client)
+
+    unjoined = []
+    for c_id, ch_data in FSUB_CACHE.items():
+        try:
+            member = await client.get_chat_member(c_id, user_id)
+            if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
+                unjoined.append(ch_data)
+        except UserNotParticipant:
+            unjoined.append(ch_data)
+        except Exception as e:
+            print(f"User {user_id} check failed in {c_id}: {e}")
+            unjoined.append(ch_data)
     return unjoined
 
 # 4-minute auto-deletion background task (240 seconds)
@@ -89,14 +133,19 @@ async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 2
 def get_fsub_keyboard(unjoined_channels, file_hash: str):
     buttons = []
     for idx, ch in enumerate(unjoined_channels, start=1):
+        # Clean and format channel title for inline display
+        display_name = ch.get("title", f"Backup Channel {idx}")
+        if len(display_name) > 22:
+            display_name = display_name[:19] + "..."
+
         buttons.append([
             InlineKeyboardButton(
-                f"📢 Join Backup Channel {idx} ➜", 
+                f"📢 Join {display_name} ➜", 
                 url=ch["link"], 
                 style=ButtonStyle.PRIMARY
             )
         ])
-    # Real-time Callback Verify Button
+
     buttons.append([
         InlineKeyboardButton(
             "🔄 Verify & Refresh Access 🔄", 
@@ -116,18 +165,18 @@ async def start_handler(client: Client, message: Message):
     text_parts = message.text.split()
     file_hash = text_parts[1].replace("file_", "") if len(text_parts) > 1 and text_parts[1].startswith("file_") else ""
 
-    # Step 1: Check Force Subscribe for all 4 channels
+    # Step 1: Force Subscribe Check
     unjoined = await check_fsub(client, user_id)
     if unjoined:
         return await message.reply_text(
             "🔒 **Access Denied!**\n\n"
-            "To unlock this file, you must subscribe to our **4 backup channels** below.\n\n"
-            "1. Join each channel listed below.\n"
-            "2. Tap the **Verify & Refresh Access** button to get your download link.",
+            "To unlock this file, you must subscribe to our backup channels below.\n\n"
+            "1. Tap each channel link below and click **Join**.\n"
+            "2. Tap the green **Verify & Refresh Access** button.",
             reply_markup=get_fsub_keyboard(unjoined, file_hash)
         )
 
-    # Step 2: Deliver file download link if subscribed
+    # Step 2: Deliver File via Single High-Speed Chrome Button
     if file_hash:
         file_data = await get_file(file_hash)
         if not file_data:
@@ -151,7 +200,7 @@ async def start_handler(client: Client, message: Message):
             f"💾 **Size:** `{readable_size}`\n\n"
             f"🔗 **Download Link:** [Click Here to Unlock]({chrome_url})\n\n"
             f"⚠️ **Notice:** Tapping the green button will automatically launch **Google Chrome** for high-speed multi-threaded downloading.\n"
-            f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
+            f"⏳ **Security Timer:** This button and link will automatically be deleted in **4 minutes**!",
             reply_markup=keyboard
         )
 
@@ -164,7 +213,7 @@ async def start_handler(client: Client, message: Message):
         "*(Note: File link generation is restricted to the bot owner)*"
     )
 
-# Callback Handler for Instant Real-Time Verification
+# Callback Handler for Real-Time Verification
 @bot.on_callback_query(filters.regex(r"^verify_(.*)"))
 async def verify_callback_handler(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
@@ -172,15 +221,14 @@ async def verify_callback_handler(client: Client, query: CallbackQuery):
 
     unjoined = await check_fsub(client, user_id)
     if unjoined:
-        await query.answer("❌ You haven't joined all 4 backup channels yet! Please join all of them.", show_alert=True)
-        # Update buttons in case they joined some of them
+        await query.answer("❌ You haven't joined all channels yet! Please join and retry.", show_alert=True)
         try:
             await query.message.edit_reply_markup(reply_markup=get_fsub_keyboard(unjoined, file_hash))
         except Exception:
             pass
         return
 
-    await query.answer("✅ Verified successfully! Generating your link...", show_alert=False)
+    await query.answer("✅ Verified! Generating download link...", show_alert=False)
 
     if not file_hash:
         await query.message.edit_text("✅ **Verification Successful!** You now have full access to the bot.")
@@ -208,7 +256,7 @@ async def verify_callback_handler(client: Client, query: CallbackQuery):
         f"💾 **Size:** `{readable_size}`\n\n"
         f"🔗 **Download Link:** [Click Here to Unlock]({chrome_url})\n\n"
         f"⚠️ **Notice:** Tapping the green button will automatically launch **Google Chrome** for high-speed multi-threaded downloading.\n"
-        f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
+        f"⏳ **Security Timer:** This button and link will automatically be deleted in **4 minutes**!",
         reply_markup=keyboard
     )
 
@@ -227,7 +275,7 @@ async def file_upload_handler(client: Client, message: Message):
 
     file_size = getattr(media, "file_size", 0)
 
-    # 2GB Telegram API Bot limit check
+    # 2GB Telegram API Bot Limit Check
     if file_size > 2000 * 1024 * 1024:
         size_gb = round(file_size / (1024 * 1024 * 1024), 2)
         return await message.reply_text(
@@ -283,21 +331,15 @@ async def main():
     await bot.start()
     print("Bot started successfully!")
 
-    # Pre-cache Storage Channel
+    # Verify Storage Channel
     try:
         chat = await bot.get_chat(DB_CHANNEL)
         print(f"✓ Connected to Storage Channel: {chat.title} ({chat.id})")
     except Exception as e:
         print(f"! Storage Channel notice: {e}")
 
-    # Pre-cache all 4 FSUB channels to prevent PeerIdInvalid
-    for ch in FSUB_CHANNELS:
-        c_id = ch.get("chat_id")
-        try:
-            fchat = await bot.get_chat(c_id)
-            print(f"✓ Connected to Backup Channel: {fchat.title} ({c_id})")
-        except Exception as e:
-            print(f"! Warning: Failed to cache Backup Channel {c_id}: {e}")
+    # Auto-resolve and cache all 4 backup channels with real links
+    await refresh_fsub_cache(bot)
 
     app = init_web_server(bot)
     runner = web.AppRunner(app)
