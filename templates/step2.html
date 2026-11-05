@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Final Step - High Speed Download</title>
+
+  <!-- Adsterra Popunder Code -->
+  <script data-cfasync="false" src="https://aarems.org/1/33f6f72810ebcb7c8710546c24a49861"></script>
+
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(22, 27, 46, 0.85);
+      --primary: #00e676;
+      --accent: #00b0ff;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --border: rgba(0, 230, 118, 0.2);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: radial-gradient(circle at top, #102720, var(--bg));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 15px;
+    }
+    .ad-slot { margin: 12px 0; text-align: center; width: 100%; overflow: hidden; display: flex; justify-content: center; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(10px);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: rgba(0, 230, 118, 0.15);
+      border: 1px solid var(--primary);
+      border-radius: 20px;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .file-details {
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .timer-text { font-size: 28px; font-weight: 800; color: #fff; margin: 10px 0; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #00c853, var(--primary));
+      color: #000;
+      font-size: 17px;
+      font-weight: 800;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 4px 20px rgba(0, 230, 118, 0.4);
+      transition: all 0.3s ease;
+      letter-spacing: 0.5px;
+    }
+    .btn.disabled {
+      background: #252b42;
+      color: var(--muted);
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Adsterra 468x60 Banner -->
+  <div class="ad-slot">
+    <script>
+      atOptions = {
+        'key' : '494d22fd1bed84b43d2ebe923df9c804',
+        'format' : 'iframe',
+        'height' : 60,
+        'width' : 468,
+        'params' : {}
+      };
+    </script>
+    <script src="https://bancadeltempoidea.org/22/494d22fd1bed84b43d2ebe923df9c804"></script>
+  </div>
+
+  <div class="card">
+    <span class="badge">STEP 2 OF 2 - FINAL UNLOCK</span>
+    <h3>High-Speed Link Ready</h3>
+
+    <div class="file-details">
+      <div style="font-weight: 600; color: #fff;">📦 {{ file_name }}</div>
+      <div style="color: var(--muted); font-size: 13px; margin-top: 4px;">Size: {{ file_size }} | Chrome Super-Fast CDN</div>
+    </div>
+
+    <p style="color: var(--muted); font-size: 14px;">Allocating dedicated Telegram multi-thread pipeline...</p>
+    <div class="timer-text" id="timer">15</div>
+
+    <!-- Adsterra 320x50 Banner -->
+    <div class="ad-slot">
+      <script>
+        atOptions = {
+          'key' : 'dbac2fbb1c68b75c745275fea665dccc',
+          'format' : 'iframe',
+          'height' : 50,
+          'width' : 320,
+          'params' : {}
+        };
+      </script>
+      <script src="https://bancadeltempoidea.org/22/dbac2fbb1c68b75c745275fea665dccc"></script>
+    </div>
+
+    <!-- Final Direct Fast Download Button -->
+    <a id="download-btn" href="/download/{{ file_hash }}" class="btn disabled" onclick="triggerSmartlink(event)">
+      ⚡ Unlocking Direct Link (<span id="btn-timer">15</span>s)
+    </a>
+  </div>
+
+  <!-- Adsterra Native Banner -->
+  <div class="ad-slot">
+    <script async="async" data-cfasync="false" src="https://bancadeltempoidea.org/21/3b4631ebd3f3fc2e66b1f018eb408f9a"></script>
+    <div id="container-3b4631ebd3f3fc2e66b1f018eb408f9a"></div>
+  </div>
+
+  <!-- Adsterra Social Bar Code -->
+  <script data-cfasync="false" src="https://bancadeltempoidea.org/14/37cb228f5758b3d32620838d41b831b8"></script>
+
+  <script>
+    let timeLeft = 15;
+    let isReady = false;
+    const timerElem = document.getElementById("timer");
+    const btnTimerElem = document.getElementById("btn-timer");
+    const downloadBtn = document.getElementById("download-btn");
+
+    const countdown = setInterval(() => {
+      timeLeft--;
+      if (timeLeft > 0) {
+        timerElem.innerText = timeLeft;
+        btnTimerElem.innerText = timeLeft;
+      } else {
+        clearInterval(countdown);
+        isReady = true;
+        timerElem.innerText = "🚀 Ready for Direct Download!";
+        downloadBtn.classList.remove("disabled");
+        downloadBtn.innerHTML = "⚡ SUPER FAST DOWNLOAD ⚡";
+      }
+    }, 1000);
+
+    function triggerSmartlink(event) {
+      if (!isReady) {
+        event.preventDefault();
+        return;
+      }
+      // Adsterra Smartlink opens in a new tab for extra monetization
+      window.open("https://directyp.org/4/28f3e0ce89db35fd5408f4bf9597a8f8", "_blank");
+      // Direct high-speed download triggers seamlessly in current tab
+    }
+  </script>
+</body>
+</html>
