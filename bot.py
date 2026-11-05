@@ -1,5 +1,6 @@
 import asyncio
 
+# Initialize event loop before imports for compatibility
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
@@ -15,6 +16,15 @@ from pyrogram.types import (
 )
 from pyrogram.errors import UserNotParticipant, RPCError
 from pyrogram.enums import ChatMemberStatus
+
+# Import Kurigram ButtonStyle for vibrant colored buttons
+try:
+    from pyrogram.enums import ButtonStyle
+except ImportError:
+    class ButtonStyle:
+        PRIMARY = "primary"   # Telegram Blue
+        SUCCESS = "success"   # Telegram Green
+        DANGER = "danger"     # Telegram Red
 
 from config import (
     API_ID,
@@ -37,7 +47,6 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# Helper function to check 4 channels
 async def check_fsub(client: Client, user_id: int):
     unjoined = []
     for ch in FSUB_CHANNELS:
@@ -59,7 +68,6 @@ async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 2
     except Exception:
         pass
 
-# Automatically listen to channel posts to ensure channel peer is always hot
 @bot.on_message(filters.channel)
 async def channel_post_listener(client: Client, message: Message):
     pass
@@ -69,14 +77,27 @@ async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
     text_parts = message.text.split()
 
+    # Verify all 4 force subscribe channels
     unjoined = await check_fsub(client, user_id)
     if unjoined:
         buttons = []
         for idx, ch in enumerate(FSUB_CHANNELS, start=1):
-            buttons.append([InlineKeyboardButton(f"📢 Join Backup Channel {idx} ➜", url=ch["link"])])
+            buttons.append([
+                InlineKeyboardButton(
+                    f"📢 Join Backup Channel {idx} ➜", 
+                    url=ch["link"], 
+                    style=ButtonStyle.PRIMARY
+                )
+            ])
         
         file_arg = text_parts[1] if len(text_parts) > 1 else ""
-        buttons.append([InlineKeyboardButton("🔄 Verify & Refresh Access 🔄", url=f"https://t.me/{client.me.username}?start={file_arg}")])
+        buttons.append([
+            InlineKeyboardButton(
+                "🔄 Verify & Refresh Access 🔄", 
+                url=f"https://t.me/{client.me.username}?start={file_arg}", 
+                style=ButtonStyle.SUCCESS
+            )
+        ])
 
         return await message.reply_text(
             "🔒 **Access Denied!**\n\n"
@@ -85,23 +106,31 @@ async def start_handler(client: Client, message: Message):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
+    # Deliver file download link
     if len(text_parts) > 1 and text_parts[1].startswith("file_"):
         file_hash = text_parts[1].replace("file_", "")
         file_data = await get_file(file_hash)
         if not file_data:
             return await message.reply_text("❌ **Link Expired or File Not Found!**")
 
-        step1_url = f"{FQDN}/step1/{file_hash}"
+        # Chrome Intent auto-launcher route
+        chrome_launch_url = f"{FQDN}/chrome/{file_hash}"
 
+        # Single vibrant green button (removes second button)
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚡ FAST DOWNLOAD (CHROME) ⚡", url=step1_url)],
-            [InlineKeyboardButton("🌐 Open Directly in Chrome Browser 🌐", url=step1_url)]
+            [
+                InlineKeyboardButton(
+                    "⚡ FAST DOWNLOAD (CHROME) ⚡", 
+                    url=chrome_launch_url, 
+                    style=ButtonStyle.SUCCESS
+                )
+            ]
         ])
 
         sent = await message.reply_text(
             f"🎬 **File Ready:** `{file_data['file_name']}`\n\n"
-            f"🔗 **Download Link:** [Click Here to Unlock]({step1_url})\n\n"
-            f"⚠️ **Notice:** Open this link in **Google Chrome** for high-speed direct downloading.\n"
+            f"🔗 **Download Link:** [Click Here to Unlock]({chrome_launch_url})\n\n"
+            f"⚠️ **Notice:** Clicking the button will automatically open **Google Chrome** for high-speed multi-thread downloading.\n"
             f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
             reply_markup=keyboard,
             disable_web_page_preview=True
@@ -129,7 +158,7 @@ async def file_upload_handler(client: Client, message: Message):
 
     file_size = getattr(media, "file_size", 0)
 
-    # 2GB Telegram API Bot limit
+    # Standard bot 2GB limit check
     if file_size > 2000 * 1024 * 1024:
         size_gb = round(file_size / (1024 * 1024 * 1024), 2)
         return await message.reply_text(
@@ -148,22 +177,27 @@ async def file_upload_handler(client: Client, message: Message):
     status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
 
     try:
-        # Copy to the DB channel
         copied_msg = await message.copy(DB_CHANNEL)
         file_hash = await save_file(copied_msg.id, file_name, file_size, mime_type)
         bot_username = client.me.username
 
         deep_link = f"https://t.me/{bot_username}?start=file_{file_hash}"
-        direct_web_link = f"{FQDN}/step1/{file_hash}"
+        direct_web_link = f"{FQDN}/chrome/{file_hash}"
 
         await status_msg.edit_text(
             f"✅ **File Stored Permanently!**\n\n"
             f"📁 **Name:** `{file_name}`\n"
             f"💾 **Size:** `{round(file_size / (1024 * 1024), 2)} MB`\n\n"
             f"🤖 **Bot Start Link:**\n`{deep_link}`\n\n"
-            f"🌐 **Direct Shortener Web Link:**\n`{direct_web_link}`",
+            f"🌐 **Direct Chrome Web Link:**\n`{direct_web_link}`",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🚀 Test Download Link", url=deep_link)]
+                [
+                    InlineKeyboardButton(
+                        "🚀 Test Download Link", 
+                        url=deep_link, 
+                        style=ButtonStyle.SUCCESS
+                    )
+                ]
             ])
         )
     except RPCError as e:
@@ -180,7 +214,6 @@ async def main():
     await bot.start()
     print("Bot started successfully!")
 
-    # Attempt peer resolution on startup
     try:
         chat = await bot.get_chat(DB_CHANNEL)
         print(f"✓ Connected to Storage Channel: {chat.title} ({chat.id})")
