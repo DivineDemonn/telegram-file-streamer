@@ -36,12 +36,14 @@ from config import (
     DB_CHANNEL,
     FSUB_CHANNELS,
     FQDN,
-    PORT
+    PORT,
+    USER_SESSION_STRING
 )
 from database import save_file, get_file
 from server import init_web_server
 from aiohttp import web
 
+# Main Bot Client (Commands, ForceSub, Buttons)
 bot = Client(
     "FastFileStreamBot",
     api_id=API_ID,
@@ -49,7 +51,17 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# In-memory cache for live channel titles and working invite links
+# User Client for 4GB high-speed downloading (Optional)
+user_bot = None
+if USER_SESSION_STRING:
+    user_bot = Client(
+        "UserStreamClient",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=USER_SESSION_STRING,
+        no_updates=True
+    )
+
 FSUB_CACHE = {}
 
 def format_size(size_bytes: int) -> str:
@@ -62,7 +74,7 @@ def format_size(size_bytes: int) -> str:
     return f"{s} {size_name[i]}"
 
 async def refresh_fsub_cache(client: Client):
-    """Auto-fetches channel titles and generates permanent invite links directly from Telegram."""
+    """Auto-fetches channel titles and generates permanent invite links."""
     for item in FSUB_CHANNELS:
         c_id = item.get("chat_id")
         if not c_id:
@@ -73,7 +85,6 @@ async def refresh_fsub_cache(client: Client):
             chat = await client.get_chat(c_id)
             title = chat.title or f"Backup Channel"
 
-            # Prefer public username if available
             if chat.username:
                 real_link = f"https://t.me/{chat.username}"
             elif env_link and "backup_channel" not in env_link:
@@ -81,7 +92,6 @@ async def refresh_fsub_cache(client: Client):
             elif chat.invite_link:
                 real_link = chat.invite_link
             else:
-                # Generate a new permanent invite link using bot admin rights
                 try:
                     real_link = await client.export_chat_invite_link(c_id)
                 except Exception:
@@ -122,7 +132,7 @@ async def check_fsub(client: Client, user_id: int):
             unjoined.append(ch_data)
     return unjoined
 
-# 4-minute auto-deletion background task (240 seconds)
+# 4-minute auto-deletion task
 async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 240):
     await asyncio.sleep(delay_seconds)
     try:
@@ -133,7 +143,6 @@ async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 2
 def get_fsub_keyboard(unjoined_channels, file_hash: str):
     buttons = []
     for idx, ch in enumerate(unjoined_channels, start=1):
-        # Clean and format channel title for inline display
         display_name = ch.get("title", f"Backup Channel {idx}")
         if len(display_name) > 22:
             display_name = display_name[:19] + "..."
@@ -165,7 +174,7 @@ async def start_handler(client: Client, message: Message):
     text_parts = message.text.split()
     file_hash = text_parts[1].replace("file_", "") if len(text_parts) > 1 and text_parts[1].startswith("file_") else ""
 
-    # Step 1: Force Subscribe Check
+    # ForceSub Verification
     unjoined = await check_fsub(client, user_id)
     if unjoined:
         return await message.reply_text(
@@ -176,7 +185,7 @@ async def start_handler(client: Client, message: Message):
             reply_markup=get_fsub_keyboard(unjoined, file_hash)
         )
 
-    # Step 2: Deliver File via Single High-Speed Chrome Button
+    # Deliver file download link
     if file_hash:
         file_data = await get_file(file_hash)
         if not file_data:
@@ -209,11 +218,10 @@ async def start_handler(client: Client, message: Message):
 
     await message.reply_text(
         "👋 **Welcome to the Ultra-Fast File Stream & Link Bot!**\n\n"
-        "Send files directly to generate high-speed download links.\n"
+        "Send files up to **4 GB** directly to generate high-speed download links.\n"
         "*(Note: File link generation is restricted to the bot owner)*"
     )
 
-# Callback Handler for Real-Time Verification
 @bot.on_callback_query(filters.regex(r"^verify_(.*)"))
 async def verify_callback_handler(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
@@ -256,7 +264,7 @@ async def verify_callback_handler(client: Client, query: CallbackQuery):
         f"💾 **Size:** `{readable_size}`\n\n"
         f"🔗 **Download Link:** [Click Here to Unlock]({chrome_url})\n\n"
         f"⚠️ **Notice:** Tapping the green button will automatically launch **Google Chrome** for high-speed multi-threaded downloading.\n"
-        f"⏳ **Security Timer:** This button and link will automatically be deleted in **4 minutes**!",
+        f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
         reply_markup=keyboard
     )
 
@@ -275,13 +283,12 @@ async def file_upload_handler(client: Client, message: Message):
 
     file_size = getattr(media, "file_size", 0)
 
-    # 2GB Telegram API Bot Limit Check
-    if file_size > 2000 * 1024 * 1024:
+    # 4 GB (4096 MB) maximum file limit
+    if file_size > 4096 * 1024 * 1024:
         size_gb = round(file_size / (1024 * 1024 * 1024), 2)
         return await message.reply_text(
-            f"⚠️ **File Too Large ({size_gb} GB)!**\n\n"
-            f"Telegram limits standard bots to files under **2.0 GB**.\n"
-            f"Please compress or split this file under 2 GB to stream."
+            f"⚠️ **File Exceeds Telegram's 4 GB Maximum ({size_gb} GB)!**\n\n"
+            f"Please compress the file under 4.0 GB."
         )
 
     file_name = getattr(media, "file_name", None)
@@ -291,18 +298,23 @@ async def file_upload_handler(client: Client, message: Message):
 
     mime_type = getattr(media, "mime_type", "application/octet-stream")
 
-    status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
+    status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel (4GB Mode)...**")
 
     try:
-        copied_msg = await message.copy(DB_CHANNEL)
-        file_hash = await save_file(copied_msg.id, file_name, file_size, mime_type)
+        # Use forward instead of copy so Telegram preserves >2GB files without failure
+        try:
+            stored_msg = await message.forward(DB_CHANNEL)
+        except Exception:
+            stored_msg = await message.copy(DB_CHANNEL)
+
+        file_hash = await save_file(stored_msg.id, file_name, file_size, mime_type)
         bot_username = client.me.username
 
         deep_link = f"https://t.me/{bot_username}?start=file_{file_hash}"
         direct_web_link = f"{FQDN}/chrome/{file_hash}"
 
         await status_msg.edit_text(
-            f"✅ **File Stored Permanently!**\n\n"
+            f"✅ **4GB File Stored Permanently!**\n\n"
             f"📁 **Name:** `{file_name}`\n"
             f"💾 **Size:** `{format_size(file_size)}`\n\n"
             f"🤖 **Bot Start Link:**\n`{deep_link}`\n\n"
@@ -329,19 +341,24 @@ async def file_upload_handler(client: Client, message: Message):
 
 async def main():
     await bot.start()
-    print("Bot started successfully!")
+    print("✓ Bot client started successfully!")
 
-    # Verify Storage Channel
+    if user_bot:
+        try:
+            await user_bot.start()
+            print("✓ User Client connected (4GB high-speed direct pipeline enabled)!")
+        except Exception as e:
+            print(f"! Warning: User client failed to start: {e}")
+
     try:
         chat = await bot.get_chat(DB_CHANNEL)
         print(f"✓ Connected to Storage Channel: {chat.title} ({chat.id})")
     except Exception as e:
         print(f"! Storage Channel notice: {e}")
 
-    # Auto-resolve and cache all 4 backup channels with real links
     await refresh_fsub_cache(bot)
 
-    app = init_web_server(bot)
+    app = init_web_server(bot, user_bot)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
