@@ -14,6 +14,7 @@
       --card-bg: rgba(22, 27, 46, 0.85);
       --primary: #00e676;
       --accent: #00b0ff;
+      --danger: #ff3366;
       --text: #e2e8f0;
       --muted: #94a3b8;
       --border: rgba(0, 230, 118, 0.2);
@@ -27,8 +28,9 @@
       align-items: center;
       min-height: 100vh;
       padding: 15px;
+      overflow-x: hidden;
     }
-    .ad-slot { margin: 12px 0; text-align: center; width: 100%; overflow: hidden; display: flex; justify-content: center; }
+    .ad-slot { margin: 12px 0; text-align: center; width: 100%; overflow: hidden; display: flex; justify-content: center; min-height: 50px; }
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -39,6 +41,12 @@
       text-align: center;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
       backdrop-filter: blur(10px);
+      transition: filter 0.3s ease;
+    }
+    .card.blurred {
+      filter: blur(12px);
+      pointer-events: none;
+      user-select: none;
     }
     .badge {
       display: inline-block;
@@ -58,7 +66,7 @@
       margin-bottom: 16px;
       font-size: 14px;
     }
-    .timer-text { font-size: 28px; font-weight: 800; color: #fff; margin: 10px 0; }
+    .timer-text { font-size: 32px; font-weight: 800; color: #fff; margin: 12px 0; }
     .btn {
       display: block;
       width: 100%;
@@ -81,9 +89,98 @@
       cursor: not-allowed;
       box-shadow: none;
     }
+
+    /* Unclosable Anti-AdBlock Modal */
+    #adblock-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 15, 0.92);
+      backdrop-filter: blur(16px);
+      z-index: 999999;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .adblock-box {
+      background: #141a2e;
+      border: 2px solid var(--danger);
+      border-radius: 18px;
+      max-width: 440px;
+      width: 100%;
+      padding: 28px;
+      text-align: center;
+      box-shadow: 0 0 50px rgba(255, 51, 102, 0.35);
+      animation: popIn 0.3s ease-out;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.85); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .adblock-icon {
+      font-size: 46px;
+      margin-bottom: 12px;
+      display: inline-block;
+    }
+    .adblock-box h2 {
+      color: #fff;
+      font-size: 22px;
+      margin-bottom: 10px;
+    }
+    .adblock-box p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .adblock-steps {
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: left;
+      font-size: 13px;
+      color: #cbd5e1;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .adblock-steps b { color: #fff; }
+    .adblock-btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #e11d48, var(--danger));
+      color: #fff;
+      font-weight: 700;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(255, 51, 102, 0.4);
+      transition: all 0.2s ease;
+    }
+    .adblock-btn:hover {
+      transform: translateY(-2px);
+    }
   </style>
 </head>
 <body>
+
+  <!-- Ad Blocker Warning Screen -->
+  <div id="adblock-modal">
+    <div class="adblock-box">
+      <div class="adblock-icon">🛡️⚠️</div>
+      <h2>Ad Blocker Detected!</h2>
+      <p>We provide ultra-fast CDN download links for free. To download this file, please disable your <b>Ad Blocker</b> or <b>Brave Shields</b>.</p>
+      
+      <div class="adblock-steps">
+        1. Tap your Ad Blocker extension (uBlock / AdBlock) or Brave icon.<br>
+        2. Set protection to <b>Disabled / OFF</b> for this site.<br>
+        3. Tap the refresh button below to unlock your file.
+      </div>
+
+      <button class="adblock-btn" onclick="window.location.reload();">🔄 I Turned It Off, Refresh Now</button>
+    </div>
+  </div>
 
   <!-- Adsterra 468x60 Banner -->
   <div class="ad-slot">
@@ -99,7 +196,7 @@
     <script src="https://bancadeltempoidea.org/22/494d22fd1bed84b43d2ebe923df9c804"></script>
   </div>
 
-  <div class="card">
+  <div class="card" id="main-card">
     <span class="badge">STEP 2 OF 2 - FINAL UNLOCK</span>
     <h3>High-Speed Link Ready</h3>
 
@@ -140,35 +237,81 @@
   <!-- Adsterra Social Bar Code -->
   <script data-cfasync="false" src="https://bancadeltempoidea.org/14/37cb228f5758b3d32620838d41b831b8"></script>
 
+  <!-- Invisible Trap Element to detect CSS/Element Blockers -->
+  <div id="ad-detection-bait" class="ad-banner adsbox adsbygoogle ad-placement pub_300x250" style="position: absolute; left: -9999px; top: -9999px; width: 1px; height: 1px;">&nbsp;</div>
+
   <script>
     let timeLeft = 15;
     let isReady = false;
+    let isAdblockActive = false;
+    let countdownInterval = null;
+
     const timerElem = document.getElementById("timer");
     const btnTimerElem = document.getElementById("btn-timer");
     const downloadBtn = document.getElementById("download-btn");
+    const modal = document.getElementById("adblock-modal");
+    const mainCard = document.getElementById("main-card");
 
-    const countdown = setInterval(() => {
-      timeLeft--;
-      if (timeLeft > 0) {
-        timerElem.innerText = timeLeft;
-        btnTimerElem.innerText = timeLeft;
-      } else {
-        clearInterval(countdown);
-        isReady = true;
-        timerElem.innerText = "🚀 Ready for Direct Download!";
-        downloadBtn.classList.remove("disabled");
-        downloadBtn.innerHTML = "⚡ SUPER FAST DOWNLOAD ⚡";
+    // Smart AdBlock Detection
+    function triggerAdblockWarning() {
+      if (isAdblockActive) return;
+      isAdblockActive = true;
+      clearInterval(countdownInterval);
+      modal.style.display = "flex";
+      mainCard.classList.add("blurred");
+      downloadBtn.classList.add("disabled");
+    }
+
+    async function detectAdBlocker() {
+      // Check 1: Bait element height and visibility
+      const bait = document.getElementById("ad-detection-bait");
+      if (!bait || bait.offsetParent === null || bait.offsetHeight === 0 || window.getComputedStyle(bait).display === 'none') {
+        triggerAdblockWarning();
+        return;
       }
-    }, 1000);
+
+      // Check 2: Network fetch test against standard ad network signature
+      try {
+        const testRequest = new Request("https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js", {
+          method: "HEAD",
+          mode: "no-cors"
+        });
+        await fetch(testRequest);
+      } catch (err) {
+        triggerAdblockWarning();
+        return;
+      }
+    }
+
+    // Run verification immediately and repeat every 1.5 seconds
+    window.addEventListener("load", () => {
+      detectAdBlocker();
+      setInterval(detectAdBlocker, 1500);
+
+      countdownInterval = setInterval(() => {
+        if (isAdblockActive) return;
+
+        timeLeft--;
+        if (timeLeft > 0) {
+          timerElem.innerText = timeLeft;
+          btnTimerElem.innerText = timeLeft;
+        } else {
+          clearInterval(countdownInterval);
+          isReady = true;
+          timerElem.innerText = "🚀 Ready for Direct Download!";
+          downloadBtn.classList.remove("disabled");
+          downloadBtn.innerHTML = "⚡ SUPER FAST DOWNLOAD ⚡";
+        }
+      }, 1000);
+    });
 
     function triggerSmartlink(event) {
-      if (!isReady) {
+      if (isAdblockActive || !isReady) {
         event.preventDefault();
         return;
       }
-      // Adsterra Smartlink opens in a new tab for extra monetization
+      // Adsterra Smartlink opens in a new tab for monetization
       window.open("https://directyp.org/4/28f3e0ce89db35fd5408f4bf9597a8f8", "_blank");
-      // Direct high-speed download triggers seamlessly in current tab
     }
   </script>
 </body>
