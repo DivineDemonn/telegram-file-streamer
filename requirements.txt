@@ -7,3 +7,4 @@ aiohttp==3.10.10
 aiohttp-jinja2==1.6
 jinja2==3.1.4
 uvloop==0.21.0; sys_platform != "win32"
+git+https://github.com/KurimuzonAkuma/Kurigram.git
