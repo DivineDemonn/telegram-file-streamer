@@ -17,7 +17,6 @@ def format_size(size_bytes: int) -> str:
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
 
-# Android Chrome Intent Auto-Launcher
 @routes.get("/chrome/{file_hash}")
 async def auto_chrome_redirect(request):
     file_hash = request.match_info["file_hash"]
@@ -35,7 +34,6 @@ async def auto_chrome_redirect(request):
     const hostPath = "{target_path}";
     const fullUrl = "{full_target_url}";
 
-    // Force Android to escape Telegram's in-app webview into Google Chrome
     if (/Android/i.test(navigator.userAgent)) {{
       window.location.href = "intent://" + hostPath + "#Intent;scheme=https;package=com.android.chrome;end";
       setTimeout(() => {{
@@ -115,14 +113,15 @@ async def stream_download_handler(request):
     if not file_data:
         raise web.HTTPNotFound(text="File Not Found")
 
-    bot = request.app["bot"]
+    # Select user_bot if configured for full 4GB speed, otherwise fallback to bot
+    stream_client = request.app.get("user_bot") or request.app.get("bot")
     msg_id = file_data["message_id"]
 
     try:
-        msg = await bot.get_messages(DB_CHANNEL, msg_id)
+        msg = await stream_client.get_messages(DB_CHANNEL, msg_id)
         media = getattr(msg, msg.media.value) if msg.media else None
         if not media:
-            raise web.HTTPNotFound(text="Underlying Telegram file was deleted")
+            raise web.HTTPNotFound(text="File not found in storage channel")
     except Exception as e:
         raise web.HTTPInternalServerError(text=f"Telegram Error: {str(e)}")
 
@@ -142,7 +141,8 @@ async def stream_download_handler(request):
     )
     await response.prepare(request)
 
-    async for chunk in bot.stream_media(msg):
+    # Stream chunks directly from Telegram DC to client browser
+    async for chunk in stream_client.stream_media(msg):
         await response.write(chunk)
 
     return response
@@ -152,9 +152,10 @@ async def stream_download_handler(request):
 async def health_check(request):
     return web.Response(text="Bot & CDN Streamer Online 24/7 🚀")
 
-def init_web_server(bot):
+def init_web_server(bot, user_bot=None):
     app = web.Application()
     aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader("./templates"))
     app["bot"] = bot
+    app["user_bot"] = user_bot
     app.add_routes(routes)
     return app
