@@ -19,8 +19,12 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "your_bot_token_here")
 # Owner Telegram User ID
 OWNER_ID = int(os.environ.get("OWNER_ID", "123456789"))
 
-# Permanent Telegram Storage Channel
+# Storage Channel (Username or -100 ID)
 DB_CHANNEL = parse_chat("DB_CHANNEL", "-1000000000000")
+
+# Optional Pyrogram String Session for 4GB High-Speed Streaming
+# (Generate via Pyrogram session generator script if streaming >2GB files)
+USER_SESSION_STRING = os.environ.get("USER_SESSION_STRING", "").strip()
 
 # 4 Force-Subscribe Channel IDs
 FSUB_CHANNELS = [
