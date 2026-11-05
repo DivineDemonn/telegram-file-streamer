@@ -1,12 +1,13 @@
 import asyncio
 
-# Initialize event loop before imports for compatibility
+# Initialize event loop before importing Pyrogram/Kurigram
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
+import math
 import traceback
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -17,7 +18,7 @@ from pyrogram.types import (
 from pyrogram.errors import UserNotParticipant, RPCError
 from pyrogram.enums import ChatMemberStatus
 
-# Import Kurigram ButtonStyle for vibrant colored buttons
+# Kurigram Colored Button Styles
 try:
     from pyrogram.enums import ButtonStyle
 except ImportError:
@@ -47,6 +48,15 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
+def format_size(size_bytes: int) -> str:
+    if not size_bytes:
+        return "0 B"
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(size_bytes / p, 2)
+    return f"{s} {size_name[i]}"
+
 async def check_fsub(client: Client, user_id: int):
     unjoined = []
     for ch in FSUB_CHANNELS:
@@ -60,7 +70,7 @@ async def check_fsub(client: Client, user_id: int):
             continue
     return unjoined
 
-# 4-minute auto-deletion task
+# 4-minute auto-deletion background worker (240 seconds)
 async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 240):
     await asyncio.sleep(delay_seconds)
     try:
@@ -77,7 +87,7 @@ async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
     text_parts = message.text.split()
 
-    # Verify all 4 force subscribe channels
+    # Step 1: Force Subscribe Verification (4 Channels)
     unjoined = await check_fsub(client, user_id)
     if unjoined:
         buttons = []
@@ -101,44 +111,46 @@ async def start_handler(client: Client, message: Message):
 
         return await message.reply_text(
             "🔒 **Access Denied!**\n\n"
-            "To access this file, subscribe to our **4 backup channels**.\n"
-            "After joining all channels, click the **Verify & Refresh Access** button below.",
+            "To unlock this file, please join our **4 backup channels** below.\n"
+            "Once joined, tap **Verify & Refresh Access**.",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-    # Deliver file download link
+    # Step 2: File Delivery via Deep-Link
     if len(text_parts) > 1 and text_parts[1].startswith("file_"):
         file_hash = text_parts[1].replace("file_", "")
         file_data = await get_file(file_hash)
         if not file_data:
             return await message.reply_text("❌ **Link Expired or File Not Found!**")
 
-        # Chrome Intent auto-launcher route
-        chrome_launch_url = f"{FQDN}/chrome/{file_hash}"
+        chrome_url = f"{FQDN}/chrome/{file_hash}"
+        readable_size = format_size(file_data.get("file_size", 0))
 
-        # Single vibrant green button (removes second button)
+        # Single styled green button with direct Chrome launcher
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
                     "⚡ FAST DOWNLOAD (CHROME) ⚡", 
-                    url=chrome_launch_url, 
+                    url=chrome_url, 
                     style=ButtonStyle.SUCCESS
                 )
             ]
         ])
 
         sent = await message.reply_text(
-            f"🎬 **File Ready:** `{file_data['file_name']}`\n\n"
-            f"🔗 **Download Link:** [Click Here to Unlock]({chrome_launch_url})\n\n"
-            f"⚠️ **Notice:** Clicking the button will automatically open **Google Chrome** for high-speed multi-thread downloading.\n"
-            f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
-            reply_markup=keyboard,
-            disable_web_page_preview=True
+            f"🎬 **File Ready:** `{file_data['file_name']}`\n"
+            f"💾 **Size:** `{readable_size}`\n\n"
+            f"🔗 **Download Link:** [Click Here to Unlock]({chrome_url})\n\n"
+            f"⚠️ **Notice:** Tapping the green button will automatically launch **Google Chrome** for high-speed multi-threaded downloading.\n"
+            f"⏳ **Security Timer:** This button and link will automatically be deleted in **4 minutes**!",
+            reply_markup=keyboard
         )
 
+        # Trigger auto-delete in 240 seconds
         asyncio.create_task(auto_delete_task(message.chat.id, sent.id, 240))
         return
 
+    # Default Start Welcome
     await message.reply_text(
         "👋 **Welcome to the Ultra-Fast File Stream & Link Bot!**\n\n"
         "Send files directly to generate high-speed download links.\n"
@@ -149,6 +161,7 @@ async def start_handler(client: Client, message: Message):
 async def file_upload_handler(client: Client, message: Message):
     user_id = message.from_user.id
 
+    # Restrict uploads strictly to the bot owner
     if user_id != OWNER_ID:
         return await message.reply_text("⛔ **Unauthorized:** Only the bot owner can upload files.")
 
@@ -158,7 +171,7 @@ async def file_upload_handler(client: Client, message: Message):
 
     file_size = getattr(media, "file_size", 0)
 
-    # Standard bot 2GB limit check
+    # 2GB Telegram API Bot limit check
     if file_size > 2000 * 1024 * 1024:
         size_gb = round(file_size / (1024 * 1024 * 1024), 2)
         return await message.reply_text(
@@ -177,6 +190,7 @@ async def file_upload_handler(client: Client, message: Message):
     status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
 
     try:
+        # Copy file to private storage channel
         copied_msg = await message.copy(DB_CHANNEL)
         file_hash = await save_file(copied_msg.id, file_name, file_size, mime_type)
         bot_username = client.me.username
@@ -187,7 +201,7 @@ async def file_upload_handler(client: Client, message: Message):
         await status_msg.edit_text(
             f"✅ **File Stored Permanently!**\n\n"
             f"📁 **Name:** `{file_name}`\n"
-            f"💾 **Size:** `{round(file_size / (1024 * 1024), 2)} MB`\n\n"
+            f"💾 **Size:** `{format_size(file_size)}`\n\n"
             f"🤖 **Bot Start Link:**\n`{deep_link}`\n\n"
             f"🌐 **Direct Chrome Web Link:**\n`{direct_web_link}`",
             reply_markup=InlineKeyboardMarkup([
@@ -214,11 +228,12 @@ async def main():
     await bot.start()
     print("Bot started successfully!")
 
+    # Verify channel access on startup
     try:
         chat = await bot.get_chat(DB_CHANNEL)
         print(f"✓ Connected to Storage Channel: {chat.title} ({chat.id})")
     except Exception as e:
-        print(f"! Warning: Storage Channel connection status: {e}")
+        print(f"! Storage Channel notice: {e}")
 
     app = init_web_server(bot)
     runner = web.AppRunner(app)
