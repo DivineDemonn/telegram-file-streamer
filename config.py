@@ -22,8 +22,7 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "123456789"))
 # Storage Channel (Username or -100 ID)
 DB_CHANNEL = parse_chat("DB_CHANNEL", "-1000000000000")
 
-# Optional Pyrogram String Session for 4GB High-Speed Streaming
-# (Generate via Pyrogram session generator script if streaming >2GB files)
+# Optional Pyrogram String Session for 4GB Streaming
 USER_SESSION_STRING = os.environ.get("USER_SESSION_STRING", "").strip()
 
 # 4 Force-Subscribe Channel IDs
@@ -38,6 +37,7 @@ FSUB_CHANNELS = [
 MONGO_URI = os.environ.get("MONGO_URI", "")
 DATABASE_NAME = os.environ.get("DATABASE_NAME", "FileStreamBot")
 
-# Web Server & Domain
+# Web Server & Permanent Domain Configuration
 PORT = int(os.environ.get("PORT", 8080))
+# If using Cloudflare Worker proxy, set FQDN to your worker URL:
 FQDN = os.environ.get("FQDN", "https://telegram-file-streamer-3vsl.onrender.com").rstrip("/")
