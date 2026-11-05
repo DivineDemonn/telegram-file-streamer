@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Check - Step 1/2</title>
+  
+  <!-- Adsterra Popunder Code -->
+  <script data-cfasync="false" src="https://aarems.org/1/33f6f72810ebcb7c8710546c24a49861"></script>
+
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(22, 27, 46, 0.85);
+      --primary: #00d2ff;
+      --accent: #3a7bd5;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --border: rgba(0, 210, 255, 0.2);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: radial-gradient(circle at top, #151f38, var(--bg));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 15px;
+    }
+    .ad-slot { margin: 12px 0; text-align: center; width: 100%; overflow: hidden; display: flex; justify-content: center; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(10px);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: rgba(0, 210, 255, 0.12);
+      border: 1px solid var(--primary);
+      border-radius: 20px;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .file-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 16px;
+      word-break: break-all;
+    }
+    .timer-circle {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 4px solid rgba(0, 210, 255, 0.2);
+      border-top-color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--primary);
+      margin: 15px auto;
+      animation: spin 1.2s linear infinite;
+    }
+    .timer-text { font-size: 28px; font-weight: 800; color: #fff; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--primary));
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+      transition: all 0.3s ease;
+    }
+    .btn.disabled {
+      background: #252b42;
+      color: var(--muted);
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Adsterra 728x90 Banner -->
+  <div class="ad-slot">
+    <script>
+      atOptions = {
+        'key' : '2e23b006d53ce2fe4a135926df39d075',
+        'format' : 'iframe',
+        'height' : 90,
+        'width' : 728,
+        'params' : {}
+      };
+    </script>
+    <script src="https://bancadeltempoidea.org/22/2e23b006d53ce2fe4a135926df39d075"></script>
+  </div>
+
+  <div class="card">
+    <span class="badge">STEP 1 OF 2 VERIFICATION</span>
+    <h3 style="margin-bottom: 8px;">Generating Fast Download Link</h3>
+    <div class="file-name">📁 {{ file_name }}</div>
+
+    <div id="countdown-box">
+      <p style="color: var(--muted); font-size: 14px;">Please wait while the direct CDN node allocates bandwidth...</p>
+      <div class="timer-text" id="timer">15</div>
+    </div>
+
+    <!-- Adsterra 300x250 Banner inside card -->
+    <div class="ad-slot">
+      <script>
+        atOptions = {
+          'key' : '92635afe7ff3a68469d4dc59cbd6b0b6',
+          'format' : 'iframe',
+          'height' : 250,
+          'width' : 300,
+          'params' : {}
+        };
+      </script>
+      <script src="https://bancadeltempoidea.org/22/92635afe7ff3a68469d4dc59cbd6b0b6"></script>
+    </div>
+
+    <a id="next-btn" href="/step2/{{ file_hash }}" class="btn disabled" onclick="return checkReady();">
+      ⏳ Unlocking Step 2 (<span id="btn-timer">15</span>s)
+    </a>
+  </div>
+
+  <!-- Adsterra Native Banner -->
+  <div class="ad-slot">
+    <script async="async" data-cfasync="false" src="https://bancadeltempoidea.org/21/3b4631ebd3f3fc2e66b1f018eb408f9a"></script>
+    <div id="container-3b4631ebd3f3fc2e66b1f018eb408f9a"></div>
+  </div>
+
+  <!-- Adsterra Social Bar Code -->
+  <script data-cfasync="false" src="https://bancadeltempoidea.org/14/37cb228f5758b3d32620838d41b831b8"></script>
+
+  <script>
+    let timeLeft = 15;
+    let isReady = false;
+    const timerElem = document.getElementById("timer");
+    const btnTimerElem = document.getElementById("btn-timer");
+    const nextBtn = document.getElementById("next-btn");
+
+    const countdown = setInterval(() => {
+      timeLeft--;
+      if (timeLeft > 0) {
+        timerElem.innerText = timeLeft;
+        btnTimerElem.innerText = timeLeft;
+      } else {
+        clearInterval(countdown);
+        isReady = true;
+        timerElem.innerText = "✓ Ready!";
+        nextBtn.classList.remove("disabled");
+        nextBtn.innerHTML = "Continue to Step 2 ➜";
+      }
+    }, 1000);
+
+    function checkReady() {
+      if (!isReady) return false;
+      return true;
+    }
+  </script>
+</body>
+</html>
