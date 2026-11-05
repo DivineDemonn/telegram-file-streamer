@@ -1,6 +1,6 @@
 import asyncio
 
-# Initialize event loop before importing Pyrogram/Kurigram
+# Initialize event loop before imports for compatibility
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
@@ -13,7 +13,8 @@ from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    Message
+    Message,
+    CallbackQuery
 )
 from pyrogram.errors import UserNotParticipant, RPCError
 from pyrogram.enums import ChatMemberStatus
@@ -57,26 +58,53 @@ def format_size(size_bytes: int) -> str:
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
 
+# Strict Force Subscribe Verification
 async def check_fsub(client: Client, user_id: int):
     unjoined = []
     for ch in FSUB_CHANNELS:
+        chat_id = ch.get("chat_id")
+        if not chat_id or str(chat_id).startswith("-100111111111"):
+            # Dummy/unset ID detected
+            continue
         try:
-            member = await client.get_chat_member(ch["chat_id"], user_id)
+            member = await client.get_chat_member(chat_id, user_id)
             if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
                 unjoined.append(ch)
         except UserNotParticipant:
             unjoined.append(ch)
-        except Exception:
-            continue
+        except Exception as e:
+            print(f"! Error checking channel {chat_id} for user {user_id}: {e}")
+            # If bot cannot check (e.g. not admin), require channel to protect links
+            unjoined.append(ch)
     return unjoined
 
-# 4-minute auto-deletion background worker (240 seconds)
+# 4-minute auto-deletion background task (240 seconds)
 async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 240):
     await asyncio.sleep(delay_seconds)
     try:
         await bot.delete_messages(chat_id, message_id)
     except Exception:
         pass
+
+def get_fsub_keyboard(unjoined_channels, file_hash: str):
+    buttons = []
+    for idx, ch in enumerate(unjoined_channels, start=1):
+        buttons.append([
+            InlineKeyboardButton(
+                f"📢 Join Backup Channel {idx} ➜", 
+                url=ch["link"], 
+                style=ButtonStyle.PRIMARY
+            )
+        ])
+    # Real-time Callback Verify Button
+    buttons.append([
+        InlineKeyboardButton(
+            "🔄 Verify & Refresh Access 🔄", 
+            callback_data=f"verify_{file_hash}", 
+            style=ButtonStyle.SUCCESS
+        )
+    ])
+    return InlineKeyboardMarkup(buttons)
 
 @bot.on_message(filters.channel)
 async def channel_post_listener(client: Client, message: Message):
@@ -86,39 +114,21 @@ async def channel_post_listener(client: Client, message: Message):
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
     text_parts = message.text.split()
+    file_hash = text_parts[1].replace("file_", "") if len(text_parts) > 1 and text_parts[1].startswith("file_") else ""
 
-    # Step 1: Force Subscribe Verification (4 Channels)
+    # Step 1: Check Force Subscribe for all 4 channels
     unjoined = await check_fsub(client, user_id)
     if unjoined:
-        buttons = []
-        for idx, ch in enumerate(FSUB_CHANNELS, start=1):
-            buttons.append([
-                InlineKeyboardButton(
-                    f"📢 Join Backup Channel {idx} ➜", 
-                    url=ch["link"], 
-                    style=ButtonStyle.PRIMARY
-                )
-            ])
-        
-        file_arg = text_parts[1] if len(text_parts) > 1 else ""
-        buttons.append([
-            InlineKeyboardButton(
-                "🔄 Verify & Refresh Access 🔄", 
-                url=f"https://t.me/{client.me.username}?start={file_arg}", 
-                style=ButtonStyle.SUCCESS
-            )
-        ])
-
         return await message.reply_text(
             "🔒 **Access Denied!**\n\n"
-            "To unlock this file, please join our **4 backup channels** below.\n"
-            "Once joined, tap **Verify & Refresh Access**.",
-            reply_markup=InlineKeyboardMarkup(buttons)
+            "To unlock this file, you must subscribe to our **4 backup channels** below.\n\n"
+            "1. Join each channel listed below.\n"
+            "2. Tap the **Verify & Refresh Access** button to get your download link.",
+            reply_markup=get_fsub_keyboard(unjoined, file_hash)
         )
 
-    # Step 2: File Delivery via Deep-Link
-    if len(text_parts) > 1 and text_parts[1].startswith("file_"):
-        file_hash = text_parts[1].replace("file_", "")
+    # Step 2: Deliver file download link if subscribed
+    if file_hash:
         file_data = await get_file(file_hash)
         if not file_data:
             return await message.reply_text("❌ **Link Expired or File Not Found!**")
@@ -126,7 +136,6 @@ async def start_handler(client: Client, message: Message):
         chrome_url = f"{FQDN}/chrome/{file_hash}"
         readable_size = format_size(file_data.get("file_size", 0))
 
-        # Single styled green button with direct Chrome launcher
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
@@ -142,26 +151,73 @@ async def start_handler(client: Client, message: Message):
             f"💾 **Size:** `{readable_size}`\n\n"
             f"🔗 **Download Link:** [Click Here to Unlock]({chrome_url})\n\n"
             f"⚠️ **Notice:** Tapping the green button will automatically launch **Google Chrome** for high-speed multi-threaded downloading.\n"
-            f"⏳ **Security Timer:** This button and link will automatically be deleted in **4 minutes**!",
+            f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
             reply_markup=keyboard
         )
 
-        # Trigger auto-delete in 240 seconds
         asyncio.create_task(auto_delete_task(message.chat.id, sent.id, 240))
         return
 
-    # Default Start Welcome
     await message.reply_text(
         "👋 **Welcome to the Ultra-Fast File Stream & Link Bot!**\n\n"
         "Send files directly to generate high-speed download links.\n"
         "*(Note: File link generation is restricted to the bot owner)*"
     )
 
+# Callback Handler for Instant Real-Time Verification
+@bot.on_callback_query(filters.regex(r"^verify_(.*)"))
+async def verify_callback_handler(client: Client, query: CallbackQuery):
+    user_id = query.from_user.id
+    file_hash = query.matches[0].group(1)
+
+    unjoined = await check_fsub(client, user_id)
+    if unjoined:
+        await query.answer("❌ You haven't joined all 4 backup channels yet! Please join all of them.", show_alert=True)
+        # Update buttons in case they joined some of them
+        try:
+            await query.message.edit_reply_markup(reply_markup=get_fsub_keyboard(unjoined, file_hash))
+        except Exception:
+            pass
+        return
+
+    await query.answer("✅ Verified successfully! Generating your link...", show_alert=False)
+
+    if not file_hash:
+        await query.message.edit_text("✅ **Verification Successful!** You now have full access to the bot.")
+        return
+
+    file_data = await get_file(file_hash)
+    if not file_data:
+        return await query.message.edit_text("❌ **Link Expired or File Not Found!**")
+
+    chrome_url = f"{FQDN}/chrome/{file_hash}"
+    readable_size = format_size(file_data.get("file_size", 0))
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "⚡ FAST DOWNLOAD (CHROME) ⚡", 
+                url=chrome_url, 
+                style=ButtonStyle.SUCCESS
+            )
+        ]
+    ])
+
+    await query.message.edit_text(
+        f"🎬 **File Ready:** `{file_data['file_name']}`\n"
+        f"💾 **Size:** `{readable_size}`\n\n"
+        f"🔗 **Download Link:** [Click Here to Unlock]({chrome_url})\n\n"
+        f"⚠️ **Notice:** Tapping the green button will automatically launch **Google Chrome** for high-speed multi-threaded downloading.\n"
+        f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
+        reply_markup=keyboard
+    )
+
+    asyncio.create_task(auto_delete_task(query.message.chat.id, query.message.id, 240))
+
 @bot.on_message(filters.private & (filters.document | filters.video | filters.audio))
 async def file_upload_handler(client: Client, message: Message):
     user_id = message.from_user.id
 
-    # Restrict uploads strictly to the bot owner
     if user_id != OWNER_ID:
         return await message.reply_text("⛔ **Unauthorized:** Only the bot owner can upload files.")
 
@@ -190,7 +246,6 @@ async def file_upload_handler(client: Client, message: Message):
     status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
 
     try:
-        # Copy file to private storage channel
         copied_msg = await message.copy(DB_CHANNEL)
         file_hash = await save_file(copied_msg.id, file_name, file_size, mime_type)
         bot_username = client.me.username
@@ -228,12 +283,21 @@ async def main():
     await bot.start()
     print("Bot started successfully!")
 
-    # Verify channel access on startup
+    # Pre-cache Storage Channel
     try:
         chat = await bot.get_chat(DB_CHANNEL)
         print(f"✓ Connected to Storage Channel: {chat.title} ({chat.id})")
     except Exception as e:
         print(f"! Storage Channel notice: {e}")
+
+    # Pre-cache all 4 FSUB channels to prevent PeerIdInvalid
+    for ch in FSUB_CHANNELS:
+        c_id = ch.get("chat_id")
+        try:
+            fchat = await bot.get_chat(c_id)
+            print(f"✓ Connected to Backup Channel: {fchat.title} ({c_id})")
+        except Exception as e:
+            print(f"! Warning: Failed to cache Backup Channel {c_id}: {e}")
 
     app = init_web_server(bot)
     runner = web.AppRunner(app)
