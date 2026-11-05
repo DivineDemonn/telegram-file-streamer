@@ -1,6 +1,6 @@
 import asyncio
 
-# Initialize event loop before Pyrogram import for compatibility
+# Initialize event loop before importing Pyrogram for Python 3.11/3.14 compatibility
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
@@ -14,7 +14,7 @@ from pyrogram.types import (
     InlineKeyboardButton,
     Message
 )
-from pyrogram.errors import UserNotParticipant, RPCError
+from pyrogram.errors import UserNotParticipant, RPCError, PeerIdInvalid, ChannelInvalid
 from pyrogram.enums import ChatMemberStatus
 
 from config import (
@@ -58,12 +58,17 @@ async def auto_delete_task(chat_id: int, message_id: int, delay_seconds: int = 2
     except Exception:
         pass
 
+# Automatically cache peer whenever a message is posted in the DB channel
+@bot.on_message(filters.chat(DB_CHANNEL))
+async def db_channel_listener(client: Client, message: Message):
+    print(f"✓ DB Channel peer cached successfully: {message.chat.id}")
+
 @bot.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
     text_parts = message.text.split()
 
-    # Verify membership across 4 backup channels
+    # Step 1: Force Subscribe check
     unjoined = await check_fsub(client, user_id)
     if unjoined:
         buttons = []
@@ -75,12 +80,12 @@ async def start_handler(client: Client, message: Message):
 
         return await message.reply_text(
             "🔒 **Access Denied!**\n\n"
-            "To access this file, you must subscribe to our **4 backup channels**.\n"
+            "To access this file, subscribe to our **4 backup channels**.\n"
             "After joining all channels, click the **Verify & Refresh Access** button below.",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-    # Process file download link
+    # Step 2: Handle deep-link file access
     if len(text_parts) > 1 and text_parts[1].startswith("file_"):
         file_hash = text_parts[1].replace("file_", "")
         file_data = await get_file(file_hash)
@@ -97,8 +102,8 @@ async def start_handler(client: Client, message: Message):
         sent = await message.reply_text(
             f"🎬 **File Ready:** `{file_data['file_name']}`\n\n"
             f"🔗 **Download Link:** [Click Here to Unlock]({step1_url})\n\n"
-            f"⚠️ **Notice:** Open this link inside **Google Chrome** for high-speed direct downloading.\n"
-            f"⏳ **Security Timer:** This message will automatically be deleted in **4 minutes**!",
+            f"⚠️ **Notice:** Open this link in **Google Chrome** for high-speed direct downloading.\n"
+            f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
             reply_markup=keyboard,
             disable_web_page_preview=True
         )
@@ -112,12 +117,27 @@ async def start_handler(client: Client, message: Message):
         "*(Note: File link generation is restricted to the bot owner)*"
     )
 
+# Forwarded channel handler to automatically link storage peer
+@bot.on_message(filters.private & filters.forwarded)
+async def forwarded_channel_link(client: Client, message: Message):
+    if message.from_user.id != OWNER_ID:
+        return
+
+    if message.forward_from_chat:
+        fwd_chat = message.forward_from_chat
+        await message.reply_text(
+            f"📡 **Channel Linked & Peer Cached!**\n\n"
+            f"📌 **Title:** `{fwd_chat.title}`\n"
+            f"🆔 **Channel ID:** `{fwd_chat.id}`\n\n"
+            f"*(Make sure `DB_CHANNEL` in Render matches this ID exactly)*"
+        )
+
 @bot.on_message(filters.private & (filters.document | filters.video | filters.audio))
 async def file_upload_handler(client: Client, message: Message):
     user_id = message.from_user.id
 
     if user_id != OWNER_ID:
-        return await message.reply_text("⛔ **Unauthorized:** Only the bot owner can upload files to this bot.")
+        return await message.reply_text("⛔ **Unauthorized:** Only the bot owner can upload files.")
 
     media = getattr(message, message.media.value, None)
     if not media:
@@ -125,16 +145,15 @@ async def file_upload_handler(client: Client, message: Message):
 
     file_size = getattr(media, "file_size", 0)
 
-    # Check 2GB Telegram API limit
+    # Telegram bot 2GB limit check
     if file_size > 2000 * 1024 * 1024:
         size_gb = round(file_size / (1024 * 1024 * 1024), 2)
         return await message.reply_text(
-            f"⚠️ **File Size Too Large ({size_gb} GB)!**\n\n"
+            f"⚠️ **File Too Large ({size_gb} GB)!**\n\n"
             f"Telegram strictly limits bots to files under **2.0 GB**.\n"
-            f"Please compress or split this file under 2 GB so the bot can stream it."
+            f"Please compress or split this file under 2 GB to stream."
         )
 
-    # Determine filename safely
     file_name = getattr(media, "file_name", None)
     if not file_name:
         ext = ".mp4" if message.video else (".mp3" if message.audio else "")
@@ -145,10 +164,7 @@ async def file_upload_handler(client: Client, message: Message):
     status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel...**")
 
     try:
-        # Copy file to private storage channel
         copied_msg = await message.copy(DB_CHANNEL)
-        
-        # Save file record in MongoDB
         file_hash = await save_file(copied_msg.id, file_name, file_size, mime_type)
         bot_username = client.me.username
 
@@ -165,19 +181,35 @@ async def file_upload_handler(client: Client, message: Message):
                 [InlineKeyboardButton("🚀 Test Download Link", url=deep_link)]
             ])
         )
+    except (PeerIdInvalid, ChannelInvalid):
+        await status_msg.edit_text(
+            f"❌ **Peer ID Invalid:** The bot has not cached channel `{DB_CHANNEL}` yet.\n\n"
+            f"**To fix in 5 seconds:**\n"
+            f"1. Open your private storage channel.\n"
+            f"2. Send any message there (e.g. `hi`).\n"
+            f"3. Forward that message to this bot chat.\n"
+            f"4. Re-upload your file!"
+        )
     except RPCError as e:
         await status_msg.edit_text(
             f"❌ **Telegram Error:** `{e.MESSAGE}`\n\n"
-            f"Make sure the bot is an **Admin** in channel `{DB_CHANNEL}` with **Post Messages** enabled."
+            f"Ensure the bot is an **Admin** in channel `{DB_CHANNEL}` with **Post Messages** enabled."
         )
     except Exception as e:
         err_msg = traceback.format_exc()
         print(f"Error in upload handler: {err_msg}")
-        await status_msg.edit_text(f"❌ **Database/Server Error:** `{str(e)}`")
+        await status_msg.edit_text(f"❌ **Error:** `{str(e)}`")
 
 async def main():
     await bot.start()
     print("Bot started successfully!")
+
+    # Pre-resolve the channel if accessible
+    try:
+        chat = await bot.get_chat(DB_CHANNEL)
+        print(f"✓ Connected to Storage Channel: {chat.title} ({chat.id})")
+    except Exception as e:
+        print(f"! Storage Channel not yet cached in session: {e}")
 
     app = init_web_server(bot)
     runner = web.AppRunner(app)
