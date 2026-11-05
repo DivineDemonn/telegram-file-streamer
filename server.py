@@ -4,7 +4,7 @@ from aiohttp import web
 import jinja2
 import aiohttp_jinja2
 from database import get_file
-from config import DB_CHANNEL
+from config import DB_CHANNEL, FQDN
 
 routes = web.RouteTableDef()
 
@@ -16,6 +16,72 @@ def format_size(size_bytes: int) -> str:
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
+
+# Android Chrome Intent Auto-Launcher
+@routes.get("/chrome/{file_hash}")
+async def auto_chrome_redirect(request):
+    file_hash = request.match_info["file_hash"]
+    clean_domain = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
+    target_path = f"{clean_domain}/step1/{file_hash}"
+    full_target_url = f"{FQDN}/step1/{file_hash}"
+
+    html_intent = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening Google Chrome...</title>
+  <script>
+    const hostPath = "{target_path}";
+    const fullUrl = "{full_target_url}";
+
+    // Force Android to escape Telegram's in-app webview into Google Chrome
+    if (/Android/i.test(navigator.userAgent)) {{
+      window.location.href = "intent://" + hostPath + "#Intent;scheme=https;package=com.android.chrome;end";
+      setTimeout(() => {{
+        window.location.href = fullUrl;
+      }}, 1000);
+    }} else {{
+      window.location.href = fullUrl;
+    }}
+  </script>
+  <style>
+    body {{
+      background: #090d16;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+      padding: 20px;
+    }}
+    .box {{
+      background: rgba(22, 27, 46, 0.9);
+      padding: 30px;
+      border-radius: 16px;
+      border: 1px solid rgba(0, 230, 118, 0.3);
+      max-width: 420px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }}
+    a {{
+      color: #00e676;
+      text-decoration: none;
+      font-weight: bold;
+    }}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2 style="color: #00e676; margin-bottom: 12px;">⚡ Launching Chrome...</h2>
+    <p style="color: #94a3b8; font-size: 14px;">Switching to Google Chrome for super-fast multi-threaded download speed.</p>
+    <p style="margin-top: 18px;"><a href="{full_target_url}">Click here if Chrome didn't open automatically</a></p>
+  </div>
+</body>
+</html>"""
+    return web.Response(text=html_intent, content_type="text/html")
 
 @routes.get("/step1/{file_hash}")
 @aiohttp_jinja2.template("step1.html")
@@ -44,7 +110,6 @@ async def step_two_handler(request):
 
 @routes.get("/download/{file_hash}")
 async def stream_download_handler(request):
-    """Direct high-speed chunk streamer using Telegram Bot client."""
     file_hash = request.match_info["file_hash"]
     file_data = await get_file(file_hash)
     if not file_data:
@@ -77,7 +142,6 @@ async def stream_download_handler(request):
     )
     await response.prepare(request)
 
-    # High-speed chunk streaming straight into the user's browser
     async for chunk in bot.stream_media(msg):
         await response.write(chunk)
 
