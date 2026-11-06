@@ -19,10 +19,10 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "your_bot_token_here")
 # Owner Telegram User ID
 OWNER_ID = int(os.environ.get("OWNER_ID", "123456789"))
 
-# Storage Channel (Username or -100 ID)
+# Permanent Telegram Storage Channel
 DB_CHANNEL = parse_chat("DB_CHANNEL", "-1000000000000")
 
-# Optional Pyrogram String Session for 4GB Streaming
+# Optional Pyrogram String Session for 4GB Direct Streaming
 USER_SESSION_STRING = os.environ.get("USER_SESSION_STRING", "").strip()
 
 # 4 Force-Subscribe Channel IDs
@@ -33,11 +33,14 @@ FSUB_CHANNELS = [
     {"chat_id": parse_chat("FSUB_4_ID"), "link": os.environ.get("FSUB_4_LINK", "").strip()},
 ]
 
+# Shortxlinks Monetization API Configuration
+SHORTENER_API = os.environ.get("SHORTENER_API", "a3e52018fcafc8c8c7c04c8bd42cae49aecbabf9").strip()
+SHORTENER_DOMAIN = os.environ.get("SHORTENER_DOMAIN", "shortxlinks.com").strip()
+
 # MongoDB URI & Settings
 MONGO_URI = os.environ.get("MONGO_URI", "")
 DATABASE_NAME = os.environ.get("DATABASE_NAME", "FileStreamBot")
 
-# Web Server & Permanent Domain Configuration
+# Web Server & Cloudflare Permanent Domain
 PORT = int(os.environ.get("PORT", 8080))
-# If using Cloudflare Worker proxy, set FQDN to your worker URL:
-FQDN = os.environ.get("FQDN", "https://telegram-file-streamer-3vsl.onrender.com").rstrip("/")
+FQDN = os.environ.get("FQDN", "https://shrill-morning-7677.kevin11rpg.workers.dev").rstrip("/")
