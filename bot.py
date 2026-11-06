@@ -1,6 +1,6 @@
 import asyncio
 
-# Initialize event loop before imports for compatibility
+# Initialize event loop before imports for Python 3.11/3.14 compatibility
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
@@ -9,6 +9,8 @@ except RuntimeError:
 
 import math
 import traceback
+import urllib.parse
+import aiohttp
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup,
@@ -37,7 +39,9 @@ from config import (
     FSUB_CHANNELS,
     FQDN,
     PORT,
-    USER_SESSION_STRING
+    USER_SESSION_STRING,
+    SHORTENER_API,
+    SHORTENER_DOMAIN
 )
 from database import save_file, get_file
 from server import init_web_server
@@ -51,7 +55,7 @@ bot = Client(
     bot_token=BOT_TOKEN
 )
 
-# User Client for 4GB high-speed downloading (Optional)
+# Optional User Client for 4GB Direct High-Speed CDN Pipeline
 user_bot = None
 if USER_SESSION_STRING:
     user_bot = Client(
@@ -73,8 +77,33 @@ def format_size(size_bytes: int) -> str:
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
 
+async def convert_to_shortlink(long_url: str) -> str:
+    """Asynchronously converts long Telegram bot links via Shortxlinks API."""
+    if not SHORTENER_API:
+        return long_url
+
+    encoded_url = urllib.parse.quote(long_url)
+    api_endpoint = f"https://{SHORTENER_DOMAIN}/api?api={SHORTENER_API}&url={encoded_url}"
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_endpoint, timeout=12) as response:
+                if response.status == 200:
+                    try:
+                        data = await response.json(content_type=None)
+                        if data.get("status") == "success" and data.get("shortenedUrl"):
+                            return data["shortenedUrl"]
+                    except Exception:
+                        text_resp = (await response.text()).strip()
+                        if text_resp.startswith("http"):
+                            return text_resp
+    except Exception as e:
+        print(f"! Shortxlinks API Exception: {e}")
+
+    return long_url
+
 async def refresh_fsub_cache(client: Client):
-    """Auto-fetches channel titles and generates permanent invite links."""
+    """Auto-fetches channel titles and generates working invite links."""
     for item in FSUB_CHANNELS:
         c_id = item.get("chat_id")
         if not c_id:
@@ -115,7 +144,7 @@ async def refresh_fsub_cache(client: Client):
                 }
 
 async def check_fsub(client: Client, user_id: int):
-    """Checks subscription status against all configured channels."""
+    """Checks subscription status against all configured backup channels."""
     if not FSUB_CACHE:
         await refresh_fsub_cache(client)
 
@@ -264,7 +293,7 @@ async def verify_callback_handler(client: Client, query: CallbackQuery):
         f"💾 **Size:** `{readable_size}`\n\n"
         f"🔗 **Download Link:** [Click Here to Unlock]({chrome_url})\n\n"
         f"⚠️ **Notice:** Tapping the green button will automatically launch **Google Chrome** for high-speed multi-threaded downloading.\n"
-        f"⏳ **Security Timer:** This button will automatically be deleted in **4 minutes**!",
+        f"⏳ **Security Timer:** This button and link will automatically be deleted in **4 minutes**!",
         reply_markup=keyboard
     )
 
@@ -298,10 +327,10 @@ async def file_upload_handler(client: Client, message: Message):
 
     mime_type = getattr(media, "mime_type", "application/octet-stream")
 
-    status_msg = await message.reply_text("🔄 **Forwarding to Unlimited Storage Channel (4GB Mode)...**")
+    status_msg = await message.reply_text("🔄 **Forwarding to Storage Channel & Generating Short Link...**")
 
     try:
-        # Use forward instead of copy so Telegram preserves >2GB files without failure
+        # Use forward instead of copy so Telegram preserves >2GB files
         try:
             stored_msg = await message.forward(DB_CHANNEL)
         except Exception:
@@ -310,21 +339,38 @@ async def file_upload_handler(client: Client, message: Message):
         file_hash = await save_file(stored_msg.id, file_name, file_size, mime_type)
         bot_username = client.me.username
 
+        # 1. Base Bot Start Link
         deep_link = f"https://t.me/{bot_username}?start=file_{file_hash}"
+
+        # 2. Convert to Monetized Short Link via Shortxlinks API
+        short_link = await convert_to_shortlink(deep_link)
+
+        # 3. Direct Chrome Web Link
         direct_web_link = f"{FQDN}/chrome/{file_hash}"
 
         await status_msg.edit_text(
             f"✅ **4GB File Stored Permanently!**\n\n"
             f"📁 **Name:** `{file_name}`\n"
             f"💾 **Size:** `{format_size(file_size)}`\n\n"
-            f"🤖 **Bot Start Link:**\n`{deep_link}`\n\n"
-            f"🌐 **Direct Chrome Web Link:**\n`{direct_web_link}`",
+            f"💰 **Monetized Short Link (Share to Earn):**\n"
+            f"`{short_link}`\n\n"
+            f"🤖 **Direct Bot Start Link:**\n"
+            f"`{deep_link}`\n\n"
+            f"🌐 **Direct Chrome Web Link:**\n"
+            f"`{direct_web_link}`",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "🚀 Test Download Link", 
-                        url=deep_link, 
+                        "💸 Share Link (Shortxlinks)", 
+                        url=short_link, 
                         style=ButtonStyle.SUCCESS
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🚀 Test Direct Bot Link", 
+                        url=deep_link, 
+                        style=ButtonStyle.PRIMARY
                     )
                 ]
             ])
